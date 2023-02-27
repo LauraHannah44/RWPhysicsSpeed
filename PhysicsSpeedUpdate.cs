@@ -1,87 +1,104 @@
-﻿using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using OptionalUI;
-using Partiality.Modloader;
-using UnityEngine;
+﻿using UnityEngine;
+using BepInEx;
+using System.Security;
+using System.Security.Permissions;
+using System.CodeDom;
 
-namespace PhysicsSpeedConfig
+#pragma warning disable CS0618 // Type or member is obsolete
+[assembly: SecurityPermission(System.Security.Permissions.SecurityAction.RequestMinimum, SkipVerification = true)]
+[module: UnverifiableCode]
+#pragma warning restore CS0618 // Type or member is obsolete
+
+namespace PhysicsSpeedConfig;
+
+[BepInPlugin(MOD_ID, "Physics Speed Config", "1.0")]
+partial class PhysicsSpeedConfig : BaseUnityPlugin
 {
-    public class PhysicsSpeedConfig : PartialityMod
+    public const string MOD_ID = "physicsspeed";
+
+    public static Configurable<float> slowDownMult = new(25f);
+    public static Configurable<float> speedUpMult = new(300f);
+    public static Configurable<KeyCode> slowDownKey = new(KeyCode.A);
+    public static Configurable<KeyCode> speedUpKey = new(KeyCode.S);
+    public static Configurable<bool> doToggle = new(true);
+    public bool slowKeyPressed = false;
+    public bool speedKeyPressed = false;
+    public bool isSlowed = false;
+    public bool isSpeeded = false;
+
+    private bool _initialized;
+
+    public void Awake()
     {
-        public static OptionInterface LoadOI()
+        On.RainWorld.OnModsInit += (orig, self) =>
         {
-            return new Config();
-        }
+            orig(self);
 
-        public PhysicsSpeedConfig()
-        {
-            instance = this;
-            this.ModID = "PhysicsSpeedConfig";
-            this.Version = "1";
-            this.author = "laura#2871";
-        }
-        public static PhysicsSpeedConfig instance;
+            if (_initialized) return;
+            _initialized = true;
 
-        public override void OnEnable()
-        {
-            base.OnEnable();
+            MachineConnector.SetRegisteredOI(MOD_ID, new Config());
+
             On.MainLoopProcess.RawUpdate += MainLoopProcess_RawUpdate;
-        }
+        };
+    }
 
-        private void MainLoopProcess_RawUpdate(On.MainLoopProcess.orig_RawUpdate orig, MainLoopProcess self, float dt)
+    private void MainLoopProcess_RawUpdate(On.MainLoopProcess.orig_RawUpdate orig, MainLoopProcess self, float dt)
+    {
+        float accommodation = 1f;
+
+        if (self.ID == ProcessManager.ProcessID.Game)
         {
-            if (DoToggle)
+            if (doToggle.Value)
             {
-                if (Input.GetKey(SlowDownKey))
+                if (Input.GetKey(slowDownKey.Value))
                 {
-                    if (!SlowKeyPressed)
+                    if (!slowKeyPressed)
                     {
-                        IsSlowed = !IsSlowed;
-                        SlowKeyPressed = true;
+                        isSlowed = !isSlowed;
+                        slowKeyPressed = true;
                     }
                 }
-                else if (SlowKeyPressed) SlowKeyPressed = false;
+                else if (slowKeyPressed) slowKeyPressed = false;
 
-                if (Input.GetKey(SpeedUpKey))
+                if (Input.GetKey(speedUpKey.Value))
                 {
-                    if (!SpeedKeyPressed)
+                    if (!speedKeyPressed)
                     {
-                        IsSpeeded = !IsSpeeded;
-                        SpeedKeyPressed = true;
+                        isSpeeded = !isSpeeded;
+                        speedKeyPressed = true;
                     }
                 }
-                else if (SpeedKeyPressed) SpeedKeyPressed = false;
+                else if (speedKeyPressed) speedKeyPressed = false;
             }
             else
             {
-                if (Input.GetKey(SlowDownKey)) IsSlowed = true;
-                else IsSlowed = false;
+                if (Input.GetKey(slowDownKey.Value)) isSlowed = true;
+                else isSlowed = false;
 
-                if (Input.GetKey(SpeedUpKey)) IsSpeeded = true;
-                else IsSpeeded = false;
+                if (Input.GetKey(speedUpKey.Value)) isSpeeded = true;
+                else isSpeeded = false;
             }
 
-            if (IsSlowed)
+            if (isSlowed)
             {
-                self.framesPerSecond = Mathf.RoundToInt(self.framesPerSecond * SlowDownMult);
+                self.framesPerSecond = Mathf.RoundToInt(self.framesPerSecond * slowDownMult.Value / 100f);
             }
-            if (IsSpeeded)
+            if (isSpeeded)
             {
-                self.framesPerSecond = Mathf.RoundToInt(self.framesPerSecond * SpeedUpMult);
+                self.framesPerSecond = Mathf.RoundToInt(self.framesPerSecond * speedUpMult.Value / 100f);
             }
 
-            orig(self, dt);
+            if (self.framesPerSecond > 60f)
+            {
+                accommodation = self.framesPerSecond / 60f;
+            }
+        }
+        else
+        {
+            self.framesPerSecond = 40;
         }
 
-        public static float SlowDownMult;
-        public static float SpeedUpMult;
-        public static KeyCode SlowDownKey;
-        public static KeyCode SpeedUpKey;
-        public static bool DoToggle;
-        public bool SlowKeyPressed = false;
-        public bool SpeedKeyPressed = false;
-        public bool IsSlowed = false;
-        public bool IsSpeeded = false;
+        orig(self, dt * accommodation);
     }
 }
